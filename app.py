@@ -321,7 +321,9 @@ elif tool_selection == "Otimizador de Imagens":
         if uploaded_image:
             with st.spinner("Processando imagem..."):
                 try:
-                    img_bytes = uploaded_image.getvalue()
+                    # Armazena os bytes originais para o preview
+                    img_bytes = uploaded_image.getvalue() 
+                    
                     output_img_bytes = None
                     file_name_img = "imagem_processada"
                     mime_img = "application/octet-stream"
@@ -349,6 +351,22 @@ elif tool_selection == "Otimizador de Imagens":
                         mime=mime_img,
                         use_container_width=True
                     )
+                    
+                    # --- NOVO: Preview da Imagem ---
+                    st.divider() # Adiciona um separador
+                    
+                    if img_option == "Remover Fundo":
+                        st.markdown("##### Comparativo:")
+                        col1, col2 = st.columns(2)
+                        with col1:
+                            st.image(img_bytes, caption="Original")
+                        with col2:
+                            st.image(output_img_bytes, caption="Fundo Removido")
+                    
+                    elif img_option == "Otimizar Imagem":
+                        st.markdown("##### Preview da Imagem Otimizada:")
+                        st.image(output_img_bytes, caption="Imagem Otimizada")
+                    # --- FIM DO NOVO PREVIEW ---
 
                 except Exception as e:
                     st.error(f"Ocorreu um erro ao processar a imagem: {e}")
