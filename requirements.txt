@@ -6,3 +6,4 @@ Pillow
 pdf2docx
 fpdf2
 rembg
+onnxruntime
