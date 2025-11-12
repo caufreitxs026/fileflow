@@ -126,10 +126,40 @@ st.set_page_config(
     layout="centered"
 )
 
-# CSS para a Logo (Centralizada) e Rodapé (Fixo)
+# CSS para a Logo (Agora à Esquerda) e Rodapé (Fixo)
 st.markdown("""
 <style>
-    
+    /* --- Início do Bloco da Logo --- */
+	.logo-text {
+		font-family: 'Courier New', monospace;
+		font-size: 28px; /* Ajuste o tamanho se necessário para as páginas internas */
+		font-weight: bold;
+		padding-top: 20px;
+		/* text-align: center; */ /* REMOVIDO: Linha que centralizava a logo */
+	}
+	/* Estilos para o tema claro (light) */
+	.logo-file {
+		color: #FFFFFF; /* Fonte branca */
+		text-shadow: 1px 1px 3px rgba(0, 0, 0, 0.7); /* Sombra preta */
+	}
+	.logo-flow {
+		color: #E30613; /* Fonte vermelha */
+		text-shadow: 1px 1px 3px rgba(0, 0, 0, 0.7); /* Sombra preta */
+	}
+
+	/* Estilos para o tema escuro (dark) */
+	@media (prefers-color-scheme: dark) {
+		.logo-file {
+			color: #FFFFFF;
+			text-shadow: 1px 1px 3px rgba(0, 0, 0, 0.7); /* Mantém a sombra preta para contraste */
+		}
+		.logo-flow {
+			color: #FF4B4B; /* Um vermelho mais vibrante para o tema escuro */
+			text-shadow: 1px 1px 3px rgba(0, 0, 0, 0.7); /* Sombra preta */
+		}
+	}
+	/* --- Fim do Bloco da Logo --- */
+
     /* --- Estilos para o footer (Rodapé Fixo) --- */
     .footer {
         text-align: center;
@@ -165,6 +195,16 @@ st.markdown("""
     }
 </style>
 """, unsafe_allow_html=True)
+
+# --- Header (Logo no canto superior) ---
+st.markdown(
+    """
+    <div class="logo-text">
+        <span class="logo-text"><span class="logo-file">FILE</span><span class="logo-flow">FLOW</span>
+    </div>
+    """,
+    unsafe_allow_html=True
+)
 
 # --- Seletor de Ferramenta (NOVA LÓGICA) ---
 tool_selection = st.radio(
