@@ -114,6 +114,7 @@ st.markdown("""
 		font-size: 28px; /* Ajuste o tamanho se necessário para as páginas internas */
 		font-weight: bold;
 		padding-top: 20px;
+		text-align: center; /* ADICIONADO: Centraliza a logo */
 	}
 	/* Estilos para o tema claro (light) */
 	.logo-file {
@@ -139,15 +140,7 @@ st.markdown("""
 	/* --- Fim do Bloco da Logo --- */
 
     /* --- CSS para Centralizar o Conteúdo --- */
-    .main-container {
-        display: flex;
-        flex-direction: column;
-        align-items: center;
-        justify-content: center;
-        text-align: center;
-        padding-top: 2rem;
-        padding-bottom: 5rem; /* Adiciona espaço para o rodapé não sobrepor */
-    }
+    /* REMOVIDO: Bloco .main-container removido para usar o layout nativo do Streamlit */
 
     /* --- Estilos para o footer (Rodapé Fixo) --- */
     .footer {
@@ -198,7 +191,7 @@ st.markdown(
 )
 
 # --- Corpo do Aplicativo ---
-st.markdown('<div class="main-container">', unsafe_allow_html=True)
+# REMOVIDO: st.markdown('<div class="main-container">', unsafe_allow_html=True)
 
 # --- Bloco 1: Conversor Universal ---
 with st.container(border=True):
@@ -317,7 +310,7 @@ with st.container(border=True):
                 st.error(f"Ocorreu um erro ao processar a imagem: {e}")
 
 
-st.markdown('</div>', unsafe_allow_html=True) # Fecha o main-container
+# REMOVIDO: st.markdown('</div>', unsafe_allow_html=True) # Fecha o main-container
 
 
 # --- Rodapé Fixo ---
