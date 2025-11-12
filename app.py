@@ -6,67 +6,95 @@ import io
 from PIL import Image
 from pdf2docx import Converter as PDFToWordConverter
 from fpdf import FPDF
-from rembg import remove # Nova importação para remover fundo
+from rembg import remove
+import os
 
 # --- Funções de Conversão (Bloco 1) ---
 
 def convert_pdf_to_word(file_bytes):
     """Converte bytes de PDF para bytes de DOCX."""
-    pdf_stream = io.BytesIO(file_bytes)
-    docx_stream = io.BytesIO()
-    
-    # Converte o PDF (stream) para DOCX (stream)
-    cv = PDFToWordConverter(pdf_stream)
-    cv.convert(docx_stream)
-    cv.close()
-    
-    docx_stream.seek(0)
-    return docx_stream.getvalue()
+    try:
+        # A biblioteca pdf2docx espera caminhos de arquivo,
+        # então usamos arquivos temporários
+        
+        # 1. Salvar o PDF de entrada temporariamente
+        pdf_temp_path = "temp_input.pdf"
+        with open(pdf_temp_path, "wb") as f:
+            f.write(file_bytes)
+            
+        # 2. Definir o caminho do DOCX de saída temporário
+        docx_temp_path = "temp_output.docx"
 
-def convert_image_to_format(file_bytes, output_format):
-    """Converte bytes de imagem (PNG, JPG) para um novo formato."""
+        # 3. Realizar a conversão
+        cv = PDFToWordConverter(pdf_temp_path)
+        cv.convert(docx_temp_path, start=0, end=None)
+        cv.close()
+
+        # 4. Ler os bytes do arquivo DOCX de saída
+        with open(docx_temp_path, "rb") as f:
+            docx_bytes = f.read()
+
+        # 5. Limpar arquivos temporários
+        os.remove(pdf_temp_path)
+        os.remove(docx_temp_path)
+        
+        return docx_bytes
+
+    except Exception as e:
+        # Tenta limpar em caso de erro
+        if os.path.exists(pdf_temp_path):
+            os.remove(pdf_temp_path)
+        if os.path.exists(docx_temp_path):
+            os.remove(docx_temp_path)
+        raise e
+
+
+def convert_image_to_format(file_bytes, target_format):
+    """Converte bytes de imagem (PNG/JPG) para um novo formato (PNG/JPG)."""
     img = Image.open(io.BytesIO(file_bytes))
     
-    # Garante que imagens RGBA (com transparência) sejam convertidas para RGB
-    # antes de salvar como JPG, que não suporta transparência.
-    if output_format == 'JPEG' and img.mode == 'RGBA':
-        img = img.convert('RGB')
+    # Garante que imagens PNG com transparência (RGBA) possam ser salvas como JPG (RGB)
+    if target_format == "JPG" and img.mode == "RGBA":
+        img = img.convert("RGB")
         
     output_buffer = io.BytesIO()
-    img.save(output_buffer, format=output_format)
+    img.save(output_buffer, format=target_format)
     return output_buffer.getvalue()
 
 def convert_excel_to_pdf(file_bytes):
-    """Converte bytes de Excel (primeira aba) para bytes de PDF."""
-    df = pd.read_excel(io.BytesIO(file_bytes))
+    """Converte o primeiro sheet de um Excel para um PDF simples."""
+    df = pd.read_excel(io.BytesIO(file_bytes), engine='openpyxl')
     
     pdf = FPDF()
-    pdf.add_page(orientation='L') # Paisagem para caber mais colunas
+    pdf.add_page()
     pdf.set_font("Arial", size=8)
     
-    # Adiciona Cabeçalho
-    col_width = pdf.w / (len(df.columns) + 1) # Largura da coluna
+    # Larguras de coluna (simples)
+    col_width = pdf.w / (len(df.columns) + 1)
+    row_height = pdf.font_size * 1.5
+
+    # Cabeçalho
+    for col in df.columns:
+        pdf.cell(col_width, row_height, str(col), border=1, align='C')
+    pdf.ln(row_height)
     
-    pdf.set_fill_color(200, 220, 255) # Cor de fundo do cabeçalho
-    for col_name in df.columns:
-        pdf.cell(col_width, 10, str(col_name), border=1, fill=True)
-    pdf.ln()
-    
-    # Adiciona Linhas
+    # Dados
     for index, row in df.iterrows():
         for item in row:
-            pdf.cell(col_width, 10, str(item), border=1)
-        pdf.ln()
+            pdf.cell(col_width, row_height, str(item), border=1, align='L')
+        pdf.ln(row_height)
         
     output_buffer = io.BytesIO()
-    pdf.output(output_buffer)
-    return output_buffer.getvalue()
+    # Salvando os bytes do PDF na memória
+    pdf_bytes = pdf.output(dest='S').encode('latin-1') 
+    
+    return pdf_bytes
 
 def convert_image_to_pdf(file_bytes):
-    """Converte bytes de imagem (PNG, JPG) para bytes de PDF."""
+    """Salva uma imagem (JPG ou PNG) como um arquivo PDF."""
     img = Image.open(io.BytesIO(file_bytes))
     
-    # Converte para RGB se for RGBA
+    # Converte RGBA para RGB se for PNG para evitar erro no FPDF/Pillow
     if img.mode == 'RGBA':
         img = img.convert('RGB')
         
@@ -82,36 +110,26 @@ def remove_background(file_bytes):
     return output_bytes
 
 def optimize_image(file_bytes):
-    """Otimiza uma imagem (JPG ou PNG)."""
+    """Otimiza uma imagem (JPG/PNG) para reduzir o tamanho."""
     img = Image.open(io.BytesIO(file_bytes))
     output_buffer = io.BytesIO()
     
-    file_format = img.format
-    if file_format == 'JPEG':
-        img.save(output_buffer, format='JPEG', optimize=True, quality=85)
-    elif file_format == 'PNG':
-        img.save(output_buffer, format='PNG', optimize=True)
-    else:
-        # Se não for JPG/PNG, apenas retorna os bytes originais
-        return file_bytes
-        
+    # Qualidade 85 é um bom equilíbrio
+    img.save(output_buffer, format=img.format, quality=85, optimize=True)
     return output_buffer.getvalue()
 
 
 # --- INTERFACE GRÁFICA (UI) ---
 
 st.set_page_config(
-    page_title="FileFlow Conversor",
+    page_title="FileFlow",
     layout="centered"
 )
 
-# --- CSS Customizado (Logo + Footer + Main Container) ---
+# CSS para a Logo (Centralizada) e Rodapé (Fixo)
 st.markdown("""
 <style>
- 
-    /* --- CSS para Centralizar o Conteúdo --- */
-    /* REMOVIDO: Bloco .main-container removido para usar o layout nativo do Streamlit */
-
+    
     /* --- Estilos para o footer (Rodapé Fixo) --- */
     .footer {
         text-align: center;
@@ -121,156 +139,180 @@ st.markdown("""
         width: 100%;
         padding: 1rem;
         color: #888;
-        /* Adiciona um leve fundo para destacar em ambos os temas */
-        background-color: var(--streamlit-theme-base)
+        background-color: transparent; /* Garante que não cubra o conteúdo */
     }
     .footer a {
         margin: 0 10px;
         display: inline-block;
         transition: transform 0.2s ease;
     }
-    .footer svg { 
-        width: 24px; 
-        height: 24px; 
-        fill: #888; 
-        transition: fill 0.3s, transform 0.2s;
-    }
-    .footer a:hover svg { 
-        fill: #FF4B4B; /* Cor vermelha do logo */
-        transform: scale(1.1);
-    }
     .footer a:hover {
         transform: scale(1.1);
     }
-    
-    @media (prefers-color-scheme: dark) {
-        .footer svg { fill: #888; }
-        .footer a:hover svg { fill: #FF4B4B; }
+    .footer svg { /* Aplicar estilo ao SVG */
+        width: 24px;
+        height: 24px;
+        fill: #888;
+        transition: fill 0.3s;
+    }
+    .footer a:hover svg {
+        fill: #FFF; /* Cor no hover (tema escuro) */
+    }
+    @media (prefers-color-scheme: light) {
+        .footer a:hover svg {
+            fill: #000; /* Cor no hover (tema claro) */
+        }
     }
 </style>
 """, unsafe_allow_html=True)
 
-# --- Corpo do Aplicativo ---
-# REMOVIDO: st.markdown('<div class="main-container">', unsafe_allow_html=True)
+# --- Seletor de Ferramenta (NOVA LÓGICA) ---
+tool_selection = st.radio(
+    "Escolha a ferramenta:",
+    ["Conversor Universal", "Otimizador de Imagens"],
+    horizontal=True,
+    label_visibility="collapsed" # Esconde o rótulo "Escolha a ferramenta:"
+)
 
-# --- Bloco 1: Conversor Universal ---
-with st.container(border=True):
-    st.title("Conversor Universal de Arquivos")
-    st.markdown("Selecione a conversão desejada e faça o upload do seu arquivo.")
+st.divider() # Linha separadora
 
-    # Dicionário de opções de conversão
-    conversion_options = {
-        "PDF (Geral) para Word": (["pdf"], "docx", "PDF"),
-        "Excel para PDF": (["xlsx", "xls"], "pdf", "Excel"),
-        "PNG para JPG": (["png"], "jpg", "PNG"),
-        "JPG para PNG": (["jpg", "jpeg"], "png", "JPG"),
-        "Imagem (PNG/JPG) para PDF": (["png", "jpg", "jpeg"], "pdf", "Imagem")
-    }
+# --- Bloco 1: Conversor Universal (Condicional) ---
+if tool_selection == "Conversor Universal":
+    with st.container(border=True):
+        st.title("Conversor Universal de Arquivos")
+        st.markdown("Selecione a conversão desejada e faça o upload do seu arquivo.")
+        
+        # Opções de conversão e tipos de arquivo aceitos
+        conversion_options = {
+            "PDF para Word (.docx)": ("pdf", "application/pdf"),
+            "Excel para PDF (.pdf)": ("xlsx", "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"),
+            "PNG para JPG": ("png", "image/png"),
+            "JPG para PNG": ("jpg", "image/jpeg"),
+            "Imagem (JPG/PNG) para PDF": (["jpg", "png"], ["image/jpeg", "image/png"]),
+        }
 
-    option = st.selectbox(
-        "Escolha o tipo de conversão:",
-        list(conversion_options.keys()),
-        key="conversor_select" # Chave única
-    )
+        option = st.selectbox(
+            "Selecione o tipo de conversão:",
+            list(conversion_options.keys())
+        )
+        
+        selected_types = conversion_options[option][0]
+        
+        # Uploader de arquivo
+        uploaded_file = st.file_uploader(
+            f"Faça upload do seu arquivo ({selected_types})",
+            type=selected_types,
+            label_visibility="collapsed"
+        )
+        
+        # Lógica de processamento e download
+        if uploaded_file:
+            with st.spinner("Convertendo..."):
+                try:
+                    file_bytes = uploaded_file.getvalue()
+                    output_bytes = None
+                    file_name = "conversao"
+                    
+                    base_name = uploaded_file.name.split('.')[0]
 
-    in_ext, out_ext, label = conversion_options[option]
+                    if option == "PDF para Word (.docx)":
+                        output_bytes = convert_pdf_to_word(file_bytes)
+                        file_name = f"{base_name}.docx"
+                        mime = "application/vnd.openxmlformats-officedocument.wordprocessingml.document"
+                    
+                    elif option == "Excel para PDF (.pdf)":
+                        output_bytes = convert_excel_to_pdf(file_bytes)
+                        file_name = f"{base_name}.pdf"
+                        mime = "application/pdf"
 
-    uploaded_file = st.file_uploader(
-        f"Selecione o arquivo {label}",
-        type=in_ext,
-        label_visibility="collapsed",
-        key="conversor_uploader" # Chave única
-    )
+                    elif option == "PNG para JPG":
+                        output_bytes = convert_image_to_format(file_bytes, "JPG")
+                        file_name = f"{base_name}.jpg"
+                        mime = "image/jpeg"
 
-    if uploaded_file:
-        with st.spinner("Processando..."):
-            try:
-                file_bytes = uploaded_file.getvalue()
-                output_bytes = None
-                
-                base_name = uploaded_file.name.split('.')[0]
-                file_name = f"{base_name}.{out_ext}"
+                    elif option == "JPG para PNG":
+                        output_bytes = convert_image_to_format(file_bytes, "PNG")
+                        file_name = f"{base_name}.png"
+                        mime = "image/png"
+                    
+                    elif option == "Imagem (JPG/PNG) para PDF":
+                        output_bytes = convert_image_to_pdf(file_bytes)
+                        file_name = f"{base_name}.pdf"
+                        mime = "application/pdf"
 
-                if option == "PDF (Geral) para Word":
-                    output_bytes = convert_pdf_to_word(file_bytes)
-                elif option == "PNG para JPG":
-                    output_bytes = convert_image_to_format(file_bytes, "JPEG")
-                elif option == "JPG para PNG":
-                    output_bytes = convert_image_to_format(file_bytes, "PNG")
-                elif option == "Excel para PDF":
-                    output_bytes = convert_excel_to_pdf(file_bytes)
-                elif option == "Imagem (PNG/JPG) para PDF":
-                     output_bytes = convert_image_to_pdf(file_bytes)
-
-                st.success("Conversão concluída com sucesso!")
-                st.download_button(
-                    label=f"Baixar {file_name}",
-                    data=output_bytes,
-                    file_name=file_name,
-                    use_container_width=True
-                )
-            except Exception as e:
-                st.error(f"Ocorreu um erro ao processar o arquivo: {e}")
-
-st.divider() # Separador visual
-
-# --- Bloco 2: Ferramentas de Imagem ---
-with st.container(border=True):
-    st.title("Otimizador de Imagens")
-    st.markdown("Remova fundos ou otimize o tamanho de arquivos JPG/PNG.")
-
-    image_options = {
-        "Remover Fundo": ("png", "Imagem"),
-        "Otimizar Imagem": (None, "JPG ou PNG") # 'None' significa que a extensão original será mantida
-    }
-    
-    img_option = st.selectbox(
-        "Escolha a ferramenta de imagem:",
-        list(image_options.keys()),
-        key="imagem_select" # Chave única
-    )
-    
-    out_ext_img, label_img = image_options[img_option]
-
-    uploaded_image = st.file_uploader(
-        f"Selecione o arquivo {label_img}",
-        type=["png", "jpg", "jpeg"],
-        label_visibility="collapsed",
-        key="imagem_uploader" # Chave única
-    )
-
-    if uploaded_image:
-        with st.spinner("Processando imagem..."):
-            try:
-                img_bytes = uploaded_image.getvalue()
-                output_img_bytes = None
-                
-                # Define o nome do arquivo de saída
-                base_name_img = uploaded_image.name.split('.')[0]
-                
-                if img_option == "Remover Fundo":
-                    out_ext_img = "png" # Saída sempre será PNG para fundos transparentes
-                    file_name_img = f"{base_name_img}_sem_fundo.png"
-                    output_img_bytes = remove_background(img_bytes)
-                
-                elif img_option == "Otimizar Imagem":
-                    # Mantém a extensão original
-                    out_ext_img = uploaded_image.name.split('.')[-1]
-                    file_name_img = f"{base_name_img}_otimizado.{out_ext_img}"
-                    output_img_bytes = optimize_image(img_bytes)
-
-                st.success("Imagem processada com sucesso!")
-                st.download_button(
-                    label=f"Baixar {file_name_img}",
-                    data=output_img_bytes,
-                    file_name=file_name_img,
-                    use_container_width=True
-                )
-            except Exception as e:
-                st.error(f"Ocorreu um erro ao processar a imagem: {e}")
+                    st.success("Conversão concluída!")
+                    st.download_button(
+                        label="Baixar Arquivo Convertido",
+                        data=output_bytes,
+                        file_name=file_name,
+                        mime=mime,
+                        use_container_width=True
+                    )
+                except Exception as e:
+                    st.error(f"Ocorreu um erro durante a conversão: {e}")
+                    st.exception(e) # Mostra o stack trace para depuração
 
 
-# REMOVIDO: st.markdown('</div>', unsafe_allow_html=True) # Fecha o main-container
+# --- Bloco 2: Ferramentas de Imagem (Condicional) ---
+elif tool_selection == "Otimizador de Imagens":
+    with st.container(border=True):
+        st.title("Otimizador de Imagens")
+        st.markdown("Remova fundos ou otimize o tamanho de arquivos JPG/PNG.")
+
+        image_options = {
+            "Remover Fundo": ("png", "Imagem"),
+            "Otimizar Imagem": (None, "JPG ou PNG") # 'None' significa que a extensão original será mantida
+        }
+        
+        img_option = st.selectbox(
+            "Selecione a ferramenta de imagem:",
+            list(image_options.keys())
+        )
+        
+        # Tipos de arquivo aceitos (JPG e PNG)
+        accepted_img_types = ["jpg", "jpeg", "png"]
+        
+        uploaded_image = st.file_uploader(
+            "Faça upload do seu arquivo (JPG ou PNG)",
+            type=accepted_img_types,
+            label_visibility="collapsed"
+        )
+        
+        if uploaded_image:
+            with st.spinner("Processando imagem..."):
+                try:
+                    img_bytes = uploaded_image.getvalue()
+                    output_img_bytes = None
+                    file_name_img = "imagem_processada"
+                    mime_img = "application/octet-stream"
+                    
+                    # Define o nome do arquivo de saída
+                    base_name_img = uploaded_image.name.split('.')[0]
+                    
+                    if img_option == "Remover Fundo":
+                        output_img_bytes = remove_background(img_bytes)
+                        file_name_img = f"{base_name_img}_sem_fundo.png"
+                        mime_img = "image/png"
+                    
+                    elif img_option == "Otimizar Imagem":
+                        output_img_bytes = optimize_image(img_bytes)
+                        # Mantém a extensão original
+                        out_ext_img = uploaded_image.name.split('.')[-1]
+                        file_name_img = f"{base_name_img}_otimizada.{out_ext_img}"
+                        mime_img = uploaded_image.type
+
+                    st.success("Processamento concluído!")
+                    st.download_button(
+                        label="Baixar Imagem Processada",
+                        data=output_img_bytes,
+                        file_name=file_name_img,
+                        mime=mime_img,
+                        use_container_width=True
+                    )
+
+                except Exception as e:
+                    st.error(f"Ocorreu um erro ao processar a imagem: {e}")
+                    st.exception(e) # Mostra o stack trace para depuração
 
 
 # --- Rodapé Fixo ---
