@@ -6,7 +6,7 @@ import io
 from PIL import Image
 from pdf2docx import Converter as PDFToWordConverter
 from fpdf import FPDF
-# from rembg import remove # TESTE: Desabilitando a importação
+from rembg import remove # Nova importação para remover fundo
 
 # --- Funções de Conversão (Bloco 1) ---
 
@@ -76,11 +76,10 @@ def convert_image_to_pdf(file_bytes):
 
 # --- Funções de Otimização de Imagem (Bloco 2) ---
 
-# TESTE: Desabilitando a função que usa rembg
-# def remove_background(file_bytes):
-#     """Remove o fundo de uma imagem."""
-#     output_bytes = remove(file_bytes)
-#     return output_bytes
+def remove_background(file_bytes):
+    """Remove o fundo de uma imagem."""
+    output_bytes = remove(file_bytes)
+    return output_bytes
 
 def optimize_image(file_bytes):
     """Otimiza uma imagem (JPG ou PNG)."""
@@ -268,7 +267,7 @@ with st.container(border=True):
     st.markdown("Remova fundos ou otimize o tamanho de arquivos JPG/PNG.")
 
     image_options = {
-        # "Remover Fundo": ("png", "Imagem"), # TESTE: Desabilitando a opção
+        "Remover Fundo": ("png", "Imagem"),
         "Otimizar Imagem": (None, "JPG ou PNG") # 'None' significa que a extensão original será mantida
     }
     
@@ -296,13 +295,12 @@ with st.container(border=True):
                 # Define o nome do arquivo de saída
                 base_name_img = uploaded_image.name.split('.')[0]
                 
-                # TESTE: Desabilitando o bloco lógico
-                # if img_option == "Remover Fundo":
-                #     out_ext_img = "png" # Saída sempre será PNG para fundos transparentes
-                #     file_name_img = f"{base_name_img}_sem_fundo.png"
-                #     output_img_bytes = remove_background(img_bytes)
+                if img_option == "Remover Fundo":
+                    out_ext_img = "png" # Saída sempre será PNG para fundos transparentes
+                    file_name_img = f"{base_name_img}_sem_fundo.png"
+                    output_img_bytes = remove_background(img_bytes)
                 
-                if img_option == "Otimizar Imagem": # Alterado de 'elif' para 'if'
+                elif img_option == "Otimizar Imagem":
                     # Mantém a extensão original
                     out_ext_img = uploaded_image.name.split('.')[-1]
                     file_name_img = f"{base_name_img}_otimizado.{out_ext_img}"
