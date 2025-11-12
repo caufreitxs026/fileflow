@@ -1,13 +1,14 @@
 import streamlit as st
-import fitz  # PyMuPDF (ainda pode ser útil para pdf2docx)
+import fitz  # PyMuPDF
 import pandas as pd
 import re
 import io
 from PIL import Image
 from pdf2docx import Converter as PDFToWordConverter
 from fpdf import FPDF
+from rembg import remove # Nova importação para remover fundo
 
-# --- Funções de Conversão ---
+# --- Funções de Conversão (Bloco 1) ---
 
 def convert_pdf_to_word(file_bytes):
     """Converte bytes de PDF para bytes de DOCX."""
@@ -73,7 +74,28 @@ def convert_image_to_pdf(file_bytes):
     img.save(output_buffer, format="PDF", resolution=100.0)
     return output_buffer.getvalue()
 
-# --- FIM: Funções de Conversão ---
+# --- Funções de Otimização de Imagem (Bloco 2) ---
+
+def remove_background(file_bytes):
+    """Remove o fundo de uma imagem."""
+    output_bytes = remove(file_bytes)
+    return output_bytes
+
+def optimize_image(file_bytes):
+    """Otimiza uma imagem (JPG ou PNG)."""
+    img = Image.open(io.BytesIO(file_bytes))
+    output_buffer = io.BytesIO()
+    
+    file_format = img.format
+    if file_format == 'JPEG':
+        img.save(output_buffer, format='JPEG', optimize=True, quality=85)
+    elif file_format == 'PNG':
+        img.save(output_buffer, format='PNG', optimize=True)
+    else:
+        # Se não for JPG/PNG, apenas retorna os bytes originais
+        return file_bytes
+        
+    return output_buffer.getvalue()
 
 
 # --- INTERFACE GRÁFICA (UI) ---
@@ -83,7 +105,7 @@ st.set_page_config(
     layout="centered"
 )
 
-# --- CSS Customizado (Logo + Sidebar Footer + Main Container) ---
+# --- CSS Customizado (Logo + Footer + Main Container) ---
 st.markdown("""
 <style>
     /* --- Início do Bloco da Logo --- */
@@ -116,7 +138,7 @@ st.markdown("""
 	}
 	/* --- Fim do Bloco da Logo --- */
 
-    /* --- CSS Antigo para Centralizar --- */
+    /* --- CSS para Centralizar o Conteúdo --- */
     .main-container {
         display: flex;
         flex-direction: column;
@@ -124,18 +146,43 @@ st.markdown("""
         justify-content: center;
         text-align: center;
         padding-top: 2rem;
+        padding-bottom: 5rem; /* Adiciona espaço para o rodapé não sobrepor */
     }
 
-    /* --- Estilos para o footer na barra lateral --- */
-    /* ATENÇÃO: Modifiquei 'img' para 'svg' para funcionar com seu código SVG */
-    .sidebar-footer { text-align: center; padding-top: 20px; padding-bottom: 20px; }
-    .sidebar-footer a { margin-right: 15px; text-decoration: none; }
-    .sidebar-footer svg { width: 25px; height: 25px; fill: #888; transition: fill 0.3s; }
-    .sidebar-footer svg:hover { fill: #FFF; }
+    /* --- Estilos para o footer (Rodapé Fixo) --- */
+    .footer {
+        text-align: center;
+        position: fixed;
+        left: 0;
+        bottom: 0;
+        width: 100%;
+        padding: 1rem;
+        color: #888;
+        /* Adiciona um leve fundo para destacar em ambos os temas */
+        background-color: var(--streamlit-theme-base)
+    }
+    .footer a {
+        margin: 0 10px;
+        display: inline-block;
+        transition: transform 0.2s ease;
+    }
+    .footer svg { 
+        width: 24px; 
+        height: 24px; 
+        fill: #888; 
+        transition: fill 0.3s, transform 0.2s;
+    }
+    .footer a:hover svg { 
+        fill: #FF4B4B; /* Cor vermelha do logo */
+        transform: scale(1.1);
+    }
+    .footer a:hover {
+        transform: scale(1.1);
+    }
     
     @media (prefers-color-scheme: dark) {
-        .sidebar-footer svg { fill: #888; }
-        .sidebar-footer svg:hover { fill: #FFF; }
+        .footer svg { fill: #888; }
+        .footer a:hover svg { fill: #FF4B4B; }
     }
 </style>
 """, unsafe_allow_html=True)
@@ -153,13 +200,12 @@ st.markdown(
 # --- Corpo do Aplicativo ---
 st.markdown('<div class="main-container">', unsafe_allow_html=True)
 
-# Container principal para dar o efeito de "card"
+# --- Bloco 1: Conversor Universal ---
 with st.container(border=True):
     st.title("Conversor Universal de Arquivos")
     st.markdown("Selecione a conversão desejada e faça o upload do seu arquivo.")
 
     # Dicionário de opções de conversão
-    # Formato: "Nome da Opção": (tipo_entrada, ext_saida, label_upload)
     conversion_options = {
         "PDF (Geral) para Word": (["pdf"], "docx", "PDF"),
         "Excel para PDF": (["xlsx", "xls"], "pdf", "Excel"),
@@ -170,31 +216,28 @@ with st.container(border=True):
 
     option = st.selectbox(
         "Escolha o tipo de conversão:",
-        list(conversion_options.keys())
+        list(conversion_options.keys()),
+        key="conversor_select" # Chave única
     )
 
-    # Pega os detalhes da opção selecionada
     in_ext, out_ext, label = conversion_options[option]
 
-    # Uploader de arquivo
     uploaded_file = st.file_uploader(
         f"Selecione o arquivo {label}",
         type=in_ext,
-        label_visibility="collapsed"
+        label_visibility="collapsed",
+        key="conversor_uploader" # Chave única
     )
 
-    # Lógica de processamento e download
     if uploaded_file:
         with st.spinner("Processando..."):
             try:
                 file_bytes = uploaded_file.getvalue()
                 output_bytes = None
                 
-                # Define o nome do arquivo de saída
                 base_name = uploaded_file.name.split('.')[0]
                 file_name = f"{base_name}.{out_ext}"
 
-                # Roteia para a função de conversão correta
                 if option == "PDF (Geral) para Word":
                     output_bytes = convert_pdf_to_word(file_bytes)
                 elif option == "PNG para JPG":
@@ -216,35 +259,89 @@ with st.container(border=True):
             except Exception as e:
                 st.error(f"Ocorreu um erro ao processar o arquivo: {e}")
 
-st.markdown('</div>', unsafe_allow_html=True)
+st.divider() # Separador visual
 
+# --- Bloco 2: Ferramentas de Imagem ---
+with st.container(border=True):
+    st.title("Otimizador de Imagens")
+    st.markdown("Remova fundos ou otimize o tamanho de arquivos JPG/PNG.")
 
-# --- Rodapé (Movido para a Sidebar) ---
-
-with st.sidebar:
-    st.divider()
+    image_options = {
+        "Remover Fundo": ("png", "Imagem"),
+        "Otimizar Imagem": (None, "JPG ou PNG") # 'None' significa que a extensão original será mantida
+    }
     
-    github_icon_svg = """
-    <svg role="img" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg" width="24" height="24">
-    <title>GitHub</title>
-    <path d="M12 .297c-6.63 0-12 5.373-12 12 0 5.303 3.438 9.8 8.205 11.385.6.113.82-.258.82-.577 0-.285-.01-1.04-.015-2.04-3.338.724-4.042-1.61-4.042-1.61C4.422 18.07 3.633 17.7 3.633 17.7c-1.087-.744.084-.729.084-.729 1.205.084 1.838 1.236 1.838 1.236 1.07 1.835 2.809 1.305 3.495.998.108-.776.417-1.305.76-1.605-2.665-.3-5.466-1.332-5.466-5.93 0-1.31.465-2.38 1.235-3.22-.135-.303-.54-1.523.105-3.176 0 0 1.005-.322 3.3 1.23.96-.267 1.98-.399 3-.405 1.02.006 2.04.138 3 .405 2.28-1.552 3.285-1.23 3.285-1.23.645 1.653.24 2.873.12 3.176.765.84 1.23 1.91 1.23 3.22 0 4.61-2.805 5.625-5.475 5.92.42.36.81 1.096.81 2.22 0 1.606-.015 2.896-.015 3.286 0 .315.21.69.825.57C20.565 22.092 24 17.592 24 12.297c0-6.627-5.373-12-12-12"/>
-    </svg>
-    """
-    linkedin_icon_svg = """
-    <svg role="img" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg" width="24" height="24">
-    <title>LinkedIn</title>
-    <path d="M20.447 20.452h-3.554v-5.569c0-1.328-.027-3.037-1.852-3.037-1.853 0-2.136 1.445-2.136 2.939v5.667H9.351V9h3.414v1.561h.046c.477-.9 1.637-1.85 3.37-1.85 3.601 0 4.267 2.37 4.267 5.455v6.286zM5.337 7.433a2.062 2.062 0 0 1-2.063-2.065 2.064 2.064 0 1 1 2.063 2.065zm1.782 13.019H3.555V9h3.564v11.452zM22.225 0H1.771C.792 0 0 .774 0 1.729v20.542C0 23.227.792 24 1.771 24h20.451C23.2 24 24 23.227 24 22.271V1.729C24 .774 23.2 0 22.225 0z"/>
-    </svg>
-    """
+    img_option = st.selectbox(
+        "Escolha a ferramenta de imagem:",
+        list(image_options.keys()),
+        key="imagem_select" # Chave única
+    )
+    
+    out_ext_img, label_img = image_options[img_option]
 
-    # Links
-    github_url = "https://github.com/caufreitxs026"
-    linkedin_url = "https://www.linkedin.com/in/cauafreitas"
+    uploaded_image = st.file_uploader(
+        f"Selecione o arquivo {label_img}",
+        type=["png", "jpg", "jpeg"],
+        label_visibility="collapsed",
+        key="imagem_uploader" # Chave única
+    )
 
-    # Renderização do rodapé na sidebar
-    st.markdown(f"""
-    <div class="sidebar-footer">
-        <a href="{github_url}" target="_blank">{github_icon_svg}</a>
-        <a href="{linkedin_url}" target="_blank">{linkedin_icon_svg}</a>
-    </div>
-    """, unsafe_allow_html=True)
+    if uploaded_image:
+        with st.spinner("Processando imagem..."):
+            try:
+                img_bytes = uploaded_image.getvalue()
+                output_img_bytes = None
+                
+                # Define o nome do arquivo de saída
+                base_name_img = uploaded_image.name.split('.')[0]
+                
+                if img_option == "Remover Fundo":
+                    out_ext_img = "png" # Saída sempre será PNG para fundos transparentes
+                    file_name_img = f"{base_name_img}_sem_fundo.png"
+                    output_img_bytes = remove_background(img_bytes)
+                
+                elif img_option == "Otimizar Imagem":
+                    # Mantém a extensão original
+                    out_ext_img = uploaded_image.name.split('.')[-1]
+                    file_name_img = f"{base_name_img}_otimizado.{out_ext_img}"
+                    output_img_bytes = optimize_image(img_bytes)
+
+                st.success("Imagem processada com sucesso!")
+                st.download_button(
+                    label=f"Baixar {file_name_img}",
+                    data=output_img_bytes,
+                    file_name=file_name_img,
+                    use_container_width=True
+                )
+            except Exception as e:
+                st.error(f"Ocorreu um erro ao processar a imagem: {e}")
+
+
+st.markdown('</div>', unsafe_allow_html=True) # Fecha o main-container
+
+
+# --- Rodapé Fixo ---
+github_icon_svg = """
+<svg role="img" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg">
+<title>GitHub</title>
+<path d="M12 .297c-6.63 0-12 5.373-12 12 0 5.303 3.438 9.8 8.205 11.385.6.113.82-.258.82-.577 0-.285-.01-1.04-.015-2.04-3.338.724-4.042-1.61-4.042-1.61C4.422 18.07 3.633 17.7 3.633 17.7c-1.087-.744.084-.729.084-.729 1.205.084 1.838 1.236 1.838 1.236 1.07 1.835 2.809 1.305 3.495.998.108-.776.417-1.305.76-1.605-2.665-.3-5.466-1.332-5.466-5.93 0-1.31.465-2.38 1.235-3.22-.135-.303-.54-1.523.105-3.176 0 0 1.005-.322 3.3 1.23.96-.267 1.98-.399 3-.405 1.02.006 2.04.138 3 .405 2.28-1.552 3.285-1.23 3.285-1.23.645 1.653.24 2.873.12 3.176.765.84 1.23 1.91 1.23 3.22 0 4.61-2.805 5.625-5.475 5.92.42.36.81 1.096.81 2.22 0 1.606-.015 2.896-.015 3.286 0 .315.21.69.825.57C20.565 22.092 24 17.592 24 12.297c0-6.627-5.373-12-12-12"/>
+</svg>
+"""
+linkedin_icon_svg = """
+<svg role="img" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg">
+<title>LinkedIn</title>
+<path d="M20.447 20.452h-3.554v-5.569c0-1.328-.027-3.037-1.852-3.037-1.853 0-2.136 1.445-2.136 2.939v5.667H9.351V9h3.414v1.561h.046c.477-.9 1.637-1.85 3.37-1.85 3.601 0 4.267 2.37 4.267 5.455v6.286zM5.337 7.433a2.062 2.062 0 0 1-2.063-2.065 2.064 2.064 0 1 1 2.063 2.065zm1.782 13.019H3.555V9h3.564v11.452zM22.225 0H1.771C.792 0 0 .774 0 1.729v20.542C0 23.227.792 24 1.771 24h20.451C23.2 24 24 23.227 24 22.271V1.729C24 .774 23.2 0 22.225 0z"/>
+</svg>
+"""
+
+# Links
+github_url = "https://github.com/caufreitxs026"
+linkedin_url = "https://www.linkedin.com/in/cauafreitas"
+
+# Renderização do rodapé
+st.markdown(f"""
+<div class="footer">
+    <a href="{github_url}" target="_blank">{github_icon_svg}</a>
+    <a href="{linkedin_url}" target="_blank">{linkedin_icon_svg}</a>
+</div>
+""", unsafe_allow_html=True)
