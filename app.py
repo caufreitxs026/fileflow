@@ -105,91 +105,6 @@ st.set_page_config(
     layout="centered"
 )
 
-# --- CSS Customizado (Logo + Footer + Main Container) ---
-st.markdown("""
-<style>
-    /* --- Início do Bloco da Logo --- */
-	.logo-text {
-		font-family: 'Courier New', monospace;
-		font-size: 28px; /* Ajuste o tamanho se necessário para as páginas internas */
-		font-weight: bold;
-		padding-top: 20px;
-		text-align: center; /* ADICIONADO: Centraliza a logo */
-	}
-	/* Estilos para o tema claro (light) */
-	.logo-file {
-		color: #FFFFFF; /* Fonte branca */
-		text-shadow: 1px 1px 3px rgba(0, 0, 0, 0.7); /* Sombra preta */
-	}
-	.logo-flow {
-		color: #E30613; /* Fonte vermelha */
-		text-shadow: 1px 1px 3px rgba(0, 0, 0, 0.7); /* Sombra preta */
-	}
-
-	/* Estilos para o tema escuro (dark) */
-	@media (prefers-color-scheme: dark) {
-		.logo-file {
-			color: #FFFFFF;
-			text-shadow: 1px 1px 3px rgba(0, 0, 0, 0.7); /* Mantém a sombra preta para contraste */
-		}
-		.logo-flow {
-			color: #FF4B4B; /* Um vermelho mais vibrante para o tema escuro */
-			text-shadow: 1px 1px 3px rgba(0, 0, 0, 0.7); /* Sombra preta */
-		}
-	}
-	/* --- Fim do Bloco da Logo --- */
-
-    /* --- CSS para Centralizar o Conteúdo --- */
-    /* REMOVIDO: Bloco .main-container removido para usar o layout nativo do Streamlit */
-
-    /* --- Estilos para o footer (Rodapé Fixo) --- */
-    .footer {
-        text-align: center;
-        position: fixed;
-        left: 0;
-        bottom: 0;
-        width: 100%;
-        padding: 1rem;
-        color: #888;
-        /* Adiciona um leve fundo para destacar em ambos os temas */
-        background-color: var(--streamlit-theme-base)
-    }
-    .footer a {
-        margin: 0 10px;
-        display: inline-block;
-        transition: transform 0.2s ease;
-    }
-    .footer svg { 
-        width: 24px; 
-        height: 24px; 
-        fill: #888; 
-        transition: fill 0.3s, transform 0.2s;
-    }
-    .footer a:hover svg { 
-        fill: #FF4B4B; /* Cor vermelha do logo */
-        transform: scale(1.1);
-    }
-    .footer a:hover {
-        transform: scale(1.1);
-    }
-    
-    @media (prefers-color-scheme: dark) {
-        .footer svg { fill: #888; }
-        .footer a:hover svg { fill: #FF4B4B; }
-    }
-</style>
-""", unsafe_allow_html=True)
-
-# --- Header (Logo no canto superior esquerdo) ---
-st.markdown(
-    """
-    <div class="logo-text">
-        <span class="logo-text"><span class="logo-file">FILE</span><span class="logo-flow">FLOW</span>
-    </div>
-    """,
-    unsafe_allow_html=True
-)
-
 # --- Corpo do Aplicativo ---
 # REMOVIDO: st.markdown('<div class="main-container">', unsafe_allow_html=True)
 
@@ -338,3 +253,4 @@ st.markdown(f"""
     <a href="{linkedin_url}" target="_blank">{linkedin_icon_svg}</a>
 </div>
 """, unsafe_allow_html=True)
+
