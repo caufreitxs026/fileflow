@@ -245,18 +245,18 @@ st.markdown(
     unsafe_allow_html=True
 )
 
-# --- Seletor de Ferramenta (Atualizado) ---
+# --- Seletor de Ferramenta (RÓTULOS ATUALIZADOS) ---
 tool_selection = st.radio(
     "Escolha a ferramenta:",
-    ["Conversor Universal", "Ferramentas de Imagem (IA)", "Ferramentas de PDF", "Ferramentas de Dados"], # Atualizado
+    ["Conversor", "Imagem (IA)", "PDF", "Dados"], # Rótulos curtos
     horizontal=True,
     label_visibility="collapsed"
 )
 
 st.divider()
 
-# --- Bloco 1: Conversor Universal (Condicional e com Lote) ---
-if tool_selection == "Conversor Universal":
+# --- Bloco 1: Conversor Universal (Condicional atualizada) ---
+if tool_selection == "Conversor":
     with st.container(border=True):
         st.title("Conversor Universal de Arquivos")
         st.markdown("Selecione a conversão desejada e faça o upload do seu arquivo.")
@@ -379,14 +379,14 @@ if tool_selection == "Conversor Universal":
                         st.error(f"Ocorreu um erro durante a conversão: {e}")
 
 
-# --- Bloco 2: Ferramentas de Imagem (Renomeado) ---
-elif tool_selection == "Ferramentas de Imagem (IA)":
+# --- Bloco 2: Ferramentas de Imagem (Condicional atualizada) ---
+elif tool_selection == "Imagem (IA)":
     with st.container(border=True):
-        st.title("Ferramentas de Imagem (com IA)") # Título atualizado
-        st.markdown("Remova fundos de imagens usando IA ou otimize o tamanho de arquivos.") # Descrição atualizada
+        st.title("Ferramentas de Imagem (com IA)") # Título completo mantido
+        st.markdown("Remova fundos de imagens usando IA ou otimize o tamanho de arquivos.")
 
         image_options = {
-            "Remover Fundo (IA)": "png", # Opção renomeada
+            "Remover Fundo (IA)": "png",
             "Otimizar Imagem": None # Mantém extensão original
         }
         
@@ -487,10 +487,10 @@ elif tool_selection == "Ferramentas de Imagem (IA)":
                         st.error(f"Ocorreu um erro ao processar a imagem: {e}")
 
 
-# --- Bloco 3: Ferramentas de PDF ---
-elif tool_selection == "Ferramentas de PDF":
+# --- Bloco 3: Ferramentas de PDF (Condicional atualizada) ---
+elif tool_selection == "PDF":
     with st.container(border=True):
-        st.title("Ferramentas de PDF")
+        st.title("Ferramentas de PDF") # Título completo mantido
         st.markdown("Combine ou separe seus arquivos PDF.")
         
         pdf_option = st.selectbox(
@@ -552,10 +552,10 @@ elif tool_selection == "Ferramentas de PDF":
                     except Exception as e:
                         st.error(f"Ocorreu um erro ao dividir o PDF: {e}")
 
-# --- Bloco 4: Ferramentas de Dados (NOVO) ---
-elif tool_selection == "Ferramentas de Dados":
+# --- Bloco 4: Ferramentas de Dados (Condicional atualizada) ---
+elif tool_selection == "Dados":
     with st.container(border=True):
-        st.title("Ferramentas de Dados")
+        st.title("Ferramentas de Dados") # Título completo mantido
         st.markdown("Converta formatos de dados estruturados (Excel, CSV, JSON).")
         
         data_options = {
