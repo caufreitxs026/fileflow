@@ -3,6 +3,7 @@ import fitz  # PyMuPDF
 import pandas as pd
 import re
 import io
+import json # Importação para o Bloco 4
 from PIL import Image
 from pdf2docx import Converter as PDFToWordConverter
 from fpdf import FPDF
@@ -62,13 +63,20 @@ def convert_excel_to_pdf(file_bytes):
     pdf.add_page()
     pdf.set_font("Arial", size=8)
     
-    col_width = pdf.w / (len(df.columns) + 1)
+    # Ajuste para evitar divisão por zero se o df estiver vazio
+    num_cols = len(df.columns)
+    if num_cols == 0:
+        return b"" # Retorna PDF vazio se não houver colunas
+        
+    col_width = pdf.w / (num_cols + 1) # Um pouco mais de margem
     row_height = pdf.font_size * 1.5
 
+    # Cabeçalho
     for col in df.columns:
         pdf.cell(col_width, row_height, str(col), border=1, align='C')
     pdf.ln(row_height)
     
+    # Dados
     for index, row in df.iterrows():
         for item in row:
             pdf.cell(col_width, row_height, str(item), border=1, align='L')
@@ -88,7 +96,7 @@ def convert_image_to_pdf(file_bytes):
     img.save(output_buffer, format="PDF", resolution=100.0)
     return output_buffer.getvalue()
 
-# --- Funções de Otimização de Imagem (Bloco 2) ---
+# --- Funções de Imagem (Bloco 2) ---
 
 def remove_background(file_bytes):
     """Remove o fundo de uma imagem."""
@@ -105,7 +113,7 @@ def optimize_image(file_bytes):
     img.save(output_buffer, format=img.format, quality=85, optimize=True)
     return output_buffer.getvalue()
 
-# --- Funções de Ferramentas de PDF (Bloco 3) ---
+# --- Funções de PDF (Bloco 3) ---
 
 def merge_pdfs(files_list):
     """Junta múltiplos arquivos PDF (lista de bytes) em um só."""
@@ -139,6 +147,40 @@ def split_pdf(file_bytes):
             
     zip_buffer.seek(0)
     return zip_buffer.getvalue()
+
+# --- Funções de Dados (Bloco 4 - NOVO) ---
+
+def convert_excel_to_json(file_bytes):
+    """Converte o primeiro sheet de um Excel para JSON (orient=records)."""
+    df = pd.read_excel(io.BytesIO(file_bytes), engine='openpyxl')
+    # force_ascii=False para suportar acentos
+    json_string = df.to_json(orient='records', indent=4, force_ascii=False)
+    return json_string.encode('utf-8')
+
+def convert_csv_to_json(file_bytes):
+    """Converte um CSV para JSON (orient=records)."""
+    try:
+        # Tenta UTF-8 primeiro
+        df = pd.read_csv(io.BytesIO(file_bytes))
+    except UnicodeDecodeError:
+        # Tenta latin-1 como fallback
+        df = pd.read_csv(io.BytesIO(file_bytes), encoding='latin-1')
+        
+    json_string = df.to_json(orient='records', indent=4, force_ascii=False)
+    return json_string.encode('utf-8')
+
+def convert_json_to_csv(file_bytes):
+    """Converte um JSON (lista de objetos) para CSV."""
+    # Decodifica os bytes para string
+    json_string = file_bytes.decode('utf-8')
+    json_data = json.loads(json_string)
+    
+    # json_normalize é ótimo para achatar JSONs aninhados
+    df = pd.json_normalize(json_data)
+    
+    output_buffer = io.StringIO()
+    df.to_csv(output_buffer, index=False)
+    return output_buffer.getvalue().encode('utf-8')
 
 
 # --- INTERFACE GRÁFICA (UI) ---
@@ -206,7 +248,7 @@ st.markdown(
 # --- Seletor de Ferramenta (Atualizado) ---
 tool_selection = st.radio(
     "Escolha a ferramenta:",
-    ["Conversor Universal", "Otimizador de Imagens", "Ferramentas de PDF"], # Nova opção
+    ["Conversor Universal", "Ferramentas de Imagem (IA)", "Ferramentas de PDF", "Ferramentas de Dados"], # Atualizado
     horizontal=True,
     label_visibility="collapsed"
 )
@@ -337,14 +379,14 @@ if tool_selection == "Conversor Universal":
                         st.error(f"Ocorreu um erro durante a conversão: {e}")
 
 
-# --- Bloco 2: Ferramentas de Imagem (Condicional e com Lote) ---
-elif tool_selection == "Otimizador de Imagens":
+# --- Bloco 2: Ferramentas de Imagem (Renomeado) ---
+elif tool_selection == "Ferramentas de Imagem (IA)":
     with st.container(border=True):
-        st.title("Otimizador de Imagens")
-        st.markdown("Remova fundos ou otimize o tamanho de arquivos JPG/PNG.")
+        st.title("Ferramentas de Imagem (com IA)") # Título atualizado
+        st.markdown("Remova fundos de imagens usando IA ou otimize o tamanho de arquivos.") # Descrição atualizada
 
         image_options = {
-            "Remover Fundo": "png",
+            "Remover Fundo (IA)": "png", # Opção renomeada
             "Otimizar Imagem": None # Mantém extensão original
         }
         
@@ -378,7 +420,7 @@ elif tool_selection == "Otimizador de Imagens":
                                 output_img_bytes = None
                                 file_name_in_zip_img = "erro.txt"
                                 
-                                if img_option == "Remover Fundo":
+                                if img_option == "Remover Fundo (IA)":
                                     output_img_bytes = remove_background(img_bytes)
                                     file_name_in_zip_img = f"{base_name_img}_sem_fundo.png"
                                 elif img_option == "Otimizar Imagem":
@@ -411,7 +453,7 @@ elif tool_selection == "Otimizador de Imagens":
                         mime_img = "application/octet-stream"
                         base_name_img = uploaded_image.name.split('.')[0]
                         
-                        if img_option == "Remover Fundo":
+                        if img_option == "Remover Fundo (IA)":
                             output_img_bytes = remove_background(img_bytes)
                             file_name_img = f"{base_name_img}_sem_fundo.png"
                             mime_img = "image/png"
@@ -432,7 +474,7 @@ elif tool_selection == "Otimizador de Imagens":
                             )
                             
                             st.divider()
-                            if img_option == "Remover Fundo":
+                            if img_option == "Remover Fundo (IA)":
                                 st.markdown("##### Comparativo:")
                                 col1, col2 = st.columns(2)
                                 col1.image(img_bytes, caption="Original")
@@ -445,7 +487,7 @@ elif tool_selection == "Otimizador de Imagens":
                         st.error(f"Ocorreu um erro ao processar a imagem: {e}")
 
 
-# --- Bloco 3: Ferramentas de PDF (NOVO) ---
+# --- Bloco 3: Ferramentas de PDF ---
 elif tool_selection == "Ferramentas de PDF":
     with st.container(border=True):
         st.title("Ferramentas de PDF")
@@ -510,12 +552,73 @@ elif tool_selection == "Ferramentas de PDF":
                     except Exception as e:
                         st.error(f"Ocorreu um erro ao dividir o PDF: {e}")
 
+# --- Bloco 4: Ferramentas de Dados (NOVO) ---
+elif tool_selection == "Ferramentas de Dados":
+    with st.container(border=True):
+        st.title("Ferramentas de Dados")
+        st.markdown("Converta formatos de dados estruturados (Excel, CSV, JSON).")
+        
+        data_options = {
+            "Excel (.xlsx) para JSON": ("xlsx", "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"),
+            "CSV para JSON": ("csv", "text/csv"),
+            "JSON para CSV": ("json", "application/json"),
+        }
+        
+        data_option = st.selectbox(
+            "Selecione o tipo de conversão:",
+            list(data_options.keys())
+        )
+        
+        selected_data_types = data_options[data_option][0]
+        
+        uploaded_data_file = st.file_uploader(
+            f"Faça upload do seu arquivo ({selected_data_types})",
+            type=selected_data_types,
+            accept_multiple_files=False, # Modo lote não implementado para dados
+            label_visibility="collapsed"
+        )
+        
+        if uploaded_data_file:
+            with st.spinner("Convertendo dados..."):
+                try:
+                    data_bytes = uploaded_data_file.getvalue()
+                    output_data_bytes = None
+                    data_file_name = "dados"
+                    data_mime = "application/octet-stream"
+                    data_base_name = uploaded_data_file.name.split('.')[0]
+
+                    if data_option == "Excel (.xlsx) para JSON":
+                        output_data_bytes = convert_excel_to_json(data_bytes)
+                        data_file_name = f"{data_base_name}.json"
+                        data_mime = "application/json"
+                    elif data_option == "CSV para JSON":
+                        output_data_bytes = convert_csv_to_json(data_bytes)
+                        data_file_name = f"{data_base_name}.json"
+                        data_mime = "application/json"
+                    elif data_option == "JSON para CSV":
+                        output_data_bytes = convert_json_to_csv(data_bytes)
+                        data_file_name = f"{data_base_name}.csv"
+                        data_mime = "text/csv"
+
+                    if output_data_bytes:
+                        st.success("Conversão de dados concluída!")
+                        st.download_button(
+                            label="Baixar Arquivo Convertido",
+                            data=output_data_bytes,
+                            file_name=data_file_name,
+                            mime=data_mime,
+                            use_container_width=True
+                        )
+                except Exception as e:
+                    st.error(f"Ocorreu um erro ao converter os dados: {e}")
+                    st.exception(e) # Mostra o stack trace para depuração
+
 
 # --- Rodapé Fixo (O mesmo de antes) ---
 github_icon_svg = """
 <svg role="img" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg">
 <title>GitHub</title>
-<path d="M12 .297c-6.63 0-12 5.373-12 12 0 5.303 3.438 9.8 8.205 11.385.6.113.82-.258.82-.577 0-.285-.01-1.04-.015-2.04-3.338.724-4.042-1.61-4.042-1.61C4.422 18.07 3.633 17.7 3.633 17.7c-1.087-.744.084-.729.084-.729 1.205.084 1.838 1.236 1.838 1.236 1.07 1.835 2.809 1.305 3.495.998.108-.776.417-1.305.76-1.605-2.665-.3-5.466-1.332-5.466-5.93 0-1.31.465-2.38 1.235-3.22-.135-.303-.54-1.523.105-3.176 0 0 1.005-.322 3.3 1.23.96-.267 1.98-.399 3-.405 1.02.006 2.04.138 3 .405 2.28-1.552 3.285-1.23 3.285-1.23.645 1.653.24 2.873.12 3.176.765.84 1.23 1.91 1.23 3.22 0 4.61-2.805 5.625-5.475 5.92.42.36.81 1.096.81 2.22 0 1.606-.015 2.896-.015 3.286 0 .315.21.69.825.57C20.565 22.092 24 17.592 24 12.297c0-6.627-5.373-12-12-12"/>
+<path d="M12 .297c-6.63 0-12 5.373-12 12 0 5.303 3.438 9.8 8.205 11.385.6.113.82-.258.82-.577 0-.285-.01-1.04-.015-2.04-3.338. willfully-4.042-1.61-4.042-1.61C4.422 18.07 3.633 17.7 3.633 17.7c-1.087-.744.084-.729.084-.729 1.205.084 1.838 1.236 1.838 1.236 1.07 1.835 2.809 1.305 3.495.998.108-.776.417-1.305.76-1.605-2.665-.3-5.466-1.332-5.466-5.93 0-1.31.465-2.38 1.235-3.22-.135-.303-.54-1.523.105-3.176 0 0 1.005-.322 3.3 1.23.96-.267 1.98-.399 3-.405 1.02.006 2.04.138 3 .405 2.28-1.552 3.285-1.23 3.285-1.23.645 1.653.24 2.873.12 3.176.765.84 1.23 1.91 1.23 3.22 0 4.61-2.805 5.625-5.475 5.92.42.36.81 1.096.81 2.22 0 1.606-.015 2.896-.015 3.286 0 .315.21.69.825.57C20.565 22.092 24 17.592 24 12.297c0-6.627-5.373-12-12-12"/>
 </svg>
 """
 linkedin_icon_svg = """
