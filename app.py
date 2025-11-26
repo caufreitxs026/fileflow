@@ -11,6 +11,17 @@ from rembg import remove
 import os
 import zipfile
 from pypdf import PdfWriter, PdfReader
+
+# Correção de compatibilidade: Ajusta função removida em versões recentes do Streamlit
+# Isso previne o erro "module 'streamlit.elements.image' has no attribute 'image_to_url'"
+try:
+    import streamlit.elements.image
+    if not hasattr(streamlit.elements.image, "image_to_url"):
+        from streamlit.elements.lib.image_utils import image_to_url
+        streamlit.elements.image.image_to_url = image_to_url
+except ImportError:
+    pass
+
 from streamlit_drawable_canvas import st_canvas # Nova biblioteca para desenho
 
 # --- Funções de Conversão (Bloco 1) ---
