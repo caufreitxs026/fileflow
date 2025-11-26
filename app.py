@@ -175,12 +175,11 @@ def render_pdf_pages(file_bytes):
 def get_page_image(file_bytes, page_number):
     """Retorna uma imagem PIL de uma página específica do PDF."""
     doc = fitz.open(stream=file_bytes, filetype="pdf")
-    page = doc.load_page(page_number)
+    page = doc.load_page(int(page_number)) # Garante que page_number é int
     
     # Define zoom explicitamente para evitar erros de tipo
-    zoom_x = 2.0
-    zoom_y = 2.0
-    mat = fitz.Matrix(zoom_x, zoom_y)
+    zoom = 2 # Inteiro é mais seguro
+    mat = fitz.Matrix(zoom, zoom)
     pix = page.get_pixmap(matrix=mat) # Alta qualidade para edição
     
     img_data = pix.tobytes("png")
@@ -676,40 +675,47 @@ elif tool_selection == "PDF":
                     # Carrega a página como imagem para o canvas
                     pil_image = get_page_image(file_bytes, page_number - 1) # index é 0-based
                     
-                    st.markdown("Use as ferramentas abaixo para desenhar na página:")
-                    
-                    # Canvas de desenho
-                    canvas_result = st_canvas(
-                        fill_color="rgba(255, 165, 0, 0.3)",  # Cor de preenchimento padrão
-                        stroke_width=3,
-                        stroke_color="#FF0000",
-                        background_image=pil_image,
-                        update_streamlit=True,
-                        height=int(pil_image.height),
-                        width=int(pil_image.width),
-                        drawing_mode="freedraw",
-                        key="canvas",
-                    )
+                    # Verifica se a imagem foi carregada corretamente
+                    if pil_image and hasattr(pil_image, "width") and hasattr(pil_image, "height"):
+                        img_w = int(pil_image.width)
+                        img_h = int(pil_image.height)
+                        
+                        st.markdown("Use as ferramentas abaixo para desenhar na página:")
+                        
+                        # Canvas de desenho
+                        canvas_result = st_canvas(
+                            fill_color="rgba(255, 165, 0, 0.3)",  # Cor de preenchimento padrão
+                            stroke_width=3,
+                            stroke_color="#FF0000",
+                            background_image=pil_image,
+                            update_streamlit=True,
+                            height=img_h,
+                            width=img_w,
+                            drawing_mode="freedraw",
+                            key="canvas",
+                        )
 
-                    if st.button("Salvar Página e Baixar PDF"):
-                        if canvas_result.image_data is not None:
-                            with st.spinner("Gerando PDF anotado..."):
-                                # Pega a imagem gerada pelo canvas
-                                annotated_data = canvas_result.image_data
-                                
-                                # Salva no PDF
-                                final_pdf_bytes = save_annotated_pdf(file_bytes, page_number - 1, annotated_data)
-                                
-                                st.success("Anotação salva com sucesso!")
-                                st.download_button(
-                                    label="Baixar PDF Anotado",
-                                    data=final_pdf_bytes,
-                                    file_name="pdf_anotado.pdf",
-                                    mime="application/pdf",
-                                    use_container_width=True
-                                )
-                        else:
-                            st.warning("Faça alguma alteração no desenho antes de salvar.")
+                        if st.button("Salvar Página e Baixar PDF"):
+                            if canvas_result.image_data is not None:
+                                with st.spinner("Gerando PDF anotado..."):
+                                    # Pega a imagem gerada pelo canvas
+                                    annotated_data = canvas_result.image_data
+                                    
+                                    # Salva no PDF
+                                    final_pdf_bytes = save_annotated_pdf(file_bytes, page_number - 1, annotated_data)
+                                    
+                                    st.success("Anotação salva com sucesso!")
+                                    st.download_button(
+                                        label="Baixar PDF Anotado",
+                                        data=final_pdf_bytes,
+                                        file_name="pdf_anotado.pdf",
+                                        mime="application/pdf",
+                                        use_container_width=True
+                                    )
+                            else:
+                                st.warning("Faça alguma alteração no desenho antes de salvar.")
+                    else:
+                        st.error("Erro: Não foi possível carregar a imagem da página.")
 
                 except Exception as e:
                     st.error(f"Ocorreu um erro ao carregar o PDF: {e}")
