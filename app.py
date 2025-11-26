@@ -48,11 +48,17 @@ def convert_image_to_format(file_bytes, target_format):
     """Converte bytes de imagem (PNG/JPG) para um novo formato (PNG/JPG)."""
     img = Image.open(io.BytesIO(file_bytes))
     
-    if target_format == "JPG" and img.mode == "RGBA":
+    # CORREÇÃO: O Pillow exige "JPEG" como nome do formato interno, "JPG" causa erro
+    save_format = target_format
+    if target_format == "JPG":
+        save_format = "JPEG"
+    
+    # Garante que imagens PNG com transparência (RGBA) possam ser salvas como JPG (RGB)
+    if save_format == "JPEG" and img.mode == "RGBA":
         img = img.convert("RGB")
         
     output_buffer = io.BytesIO()
-    img.save(output_buffer, format=target_format)
+    img.save(output_buffer, format=save_format)
     return output_buffer.getvalue()
 
 def convert_excel_to_pdf(file_bytes):
