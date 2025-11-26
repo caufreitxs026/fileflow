@@ -12,18 +12,6 @@ import os
 import zipfile
 from pypdf import PdfWriter, PdfReader
 
-# Correção de compatibilidade: Ajusta função removida em versões recentes do Streamlit
-# Isso previne o erro "module 'streamlit.elements.image' has no attribute 'image_to_url'"
-try:
-    import streamlit.elements.image
-    if not hasattr(streamlit.elements.image, "image_to_url"):
-        from streamlit.elements.lib.image_utils import image_to_url
-        streamlit.elements.image.image_to_url = image_to_url
-except ImportError:
-    pass
-
-from streamlit_drawable_canvas import st_canvas # Nova biblioteca para desenho
-
 # --- Funções de Conversão (Bloco 1) ---
 
 def convert_pdf_to_word(file_bytes):
@@ -172,22 +160,6 @@ def render_pdf_pages(file_bytes):
         images.append(img_data)
     return images, len(doc)
 
-def get_page_image(file_bytes, page_number):
-    """Retorna uma imagem PIL de uma página específica do PDF."""
-    doc = fitz.open(stream=file_bytes, filetype="pdf")
-    page = doc.load_page(int(page_number)) # Garante que page_number é int
-    
-    # Define zoom explicitamente para evitar erros de tipo
-    zoom = 2 # Inteiro é mais seguro
-    mat = fitz.Matrix(zoom, zoom)
-    pix = page.get_pixmap(matrix=mat) # Alta qualidade para edição
-    
-    img_data = pix.tobytes("png")
-    image = Image.open(io.BytesIO(img_data))
-    
-    # Converte para RGB para garantir compatibilidade
-    return image.convert("RGB")
-
 def edit_pdf_structure(file_bytes, pages_to_delete, pages_to_rotate):
     """Edita a estrutura do PDF (deleta e rotaciona páginas)."""
     doc = fitz.open(stream=file_bytes, filetype="pdf")
@@ -202,28 +174,6 @@ def edit_pdf_structure(file_bytes, pages_to_delete, pages_to_rotate):
 
     output_buffer = io.BytesIO()
     output_doc.save(output_buffer)
-    return output_buffer.getvalue()
-
-def save_annotated_pdf(original_pdf_bytes, page_number, annotated_img_data):
-    """Substitui uma página do PDF pela versão anotada (imagem)."""
-    doc = fitz.open(stream=original_pdf_bytes, filetype="pdf")
-    
-    # Converte os dados da imagem anotada para bytes
-    img_byte_arr = io.BytesIO()
-    annotated_img = Image.fromarray(annotated_img_data.astype('uint8'), 'RGBA')
-    annotated_img = annotated_img.convert("RGB") # PDF prefere RGB
-    annotated_img.save(img_byte_arr, format='JPEG', quality=95)
-    img_bytes = img_byte_arr.getvalue()
-
-    # Carrega a página original para pegar dimensões
-    page = doc.load_page(page_number)
-    rect = page.rect
-    
-    # Insere a nova imagem cobrindo toda a página
-    page.insert_image(rect, stream=img_bytes)
-    
-    output_buffer = io.BytesIO()
-    doc.save(output_buffer)
     return output_buffer.getvalue()
 
 # --- Funções de Dados (Bloco 4) ---
@@ -546,7 +496,7 @@ elif tool_selection == "PDF":
         
         pdf_option = st.selectbox(
             "Selecione a ferramenta de PDF:",
-            ["Juntar PDFs", "Dividir PDF (por página)", "Editor de Estrutura", "Anotar e Desenhar"]
+            ["Juntar PDFs", "Dividir PDF (por página)", "Editor de Estrutura"]
         )
         
         if pdf_option == "Juntar PDFs":
@@ -652,73 +602,6 @@ elif tool_selection == "PDF":
                                 )
                     except Exception as e:
                         st.error(f"Ocorreu um erro ao carregar o PDF: {e}")
-
-        elif pdf_option == "Anotar e Desenhar":
-            st.markdown("Desenhe, adicione texto e faça anotações em uma página do PDF.")
-            uploaded_pdf_annotate = st.file_uploader(
-                "Selecione o PDF para anotar",
-                type="pdf",
-                accept_multiple_files=False,
-                label_visibility="collapsed",
-                key="annotate_uploader"
-            )
-
-            if uploaded_pdf_annotate:
-                try:
-                    file_bytes = uploaded_pdf_annotate.getvalue()
-                    doc = fitz.open(stream=file_bytes, filetype="pdf")
-                    num_pages = len(doc)
-
-                    # Seleção da página
-                    page_number = st.number_input("Selecione a página para anotar:", min_value=1, max_value=num_pages, value=1)
-                    
-                    # Carrega a página como imagem para o canvas
-                    pil_image = get_page_image(file_bytes, page_number - 1) # index é 0-based
-                    
-                    # Verifica se a imagem foi carregada corretamente
-                    if pil_image and hasattr(pil_image, "width") and hasattr(pil_image, "height"):
-                        img_w = int(pil_image.width)
-                        img_h = int(pil_image.height)
-                        
-                        st.markdown("Use as ferramentas abaixo para desenhar na página:")
-                        
-                        # Canvas de desenho
-                        canvas_result = st_canvas(
-                            fill_color="rgba(255, 165, 0, 0.3)",  # Cor de preenchimento padrão
-                            stroke_width=3,
-                            stroke_color="#FF0000",
-                            background_image=pil_image,
-                            update_streamlit=True,
-                            height=img_h,
-                            width=img_w,
-                            drawing_mode="freedraw",
-                            key="canvas",
-                        )
-
-                        if st.button("Salvar Página e Baixar PDF"):
-                            if canvas_result.image_data is not None:
-                                with st.spinner("Gerando PDF anotado..."):
-                                    # Pega a imagem gerada pelo canvas
-                                    annotated_data = canvas_result.image_data
-                                    
-                                    # Salva no PDF
-                                    final_pdf_bytes = save_annotated_pdf(file_bytes, page_number - 1, annotated_data)
-                                    
-                                    st.success("Anotação salva com sucesso!")
-                                    st.download_button(
-                                        label="Baixar PDF Anotado",
-                                        data=final_pdf_bytes,
-                                        file_name="pdf_anotado.pdf",
-                                        mime="application/pdf",
-                                        use_container_width=True
-                                    )
-                            else:
-                                st.warning("Faça alguma alteração no desenho antes de salvar.")
-                    else:
-                        st.error("Erro: Não foi possível carregar a imagem da página.")
-
-                except Exception as e:
-                    st.error(f"Ocorreu um erro ao carregar o PDF: {e}")
 
 elif tool_selection == "Dados":
     with st.container(border=True):
