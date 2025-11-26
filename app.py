@@ -3,14 +3,15 @@ import fitz  # PyMuPDF
 import pandas as pd
 import re
 import io
-import json # Importação para o Bloco 4
+import json 
 from PIL import Image
 from pdf2docx import Converter as PDFToWordConverter
 from fpdf import FPDF
 from rembg import remove
 import os
-import zipfile  # Para processamento em lote
-from pypdf import PdfWriter, PdfReader # Para ferramentas de PDF
+import zipfile
+from pypdf import PdfWriter, PdfReader
+from streamlit_drawable_canvas import st_canvas # Nova biblioteca para desenho
 
 # --- Funções de Conversão (Bloco 1) ---
 
@@ -48,12 +49,10 @@ def convert_image_to_format(file_bytes, target_format):
     """Converte bytes de imagem (PNG/JPG) para um novo formato (PNG/JPG)."""
     img = Image.open(io.BytesIO(file_bytes))
     
-    # CORREÇÃO: O Pillow exige "JPEG" como nome do formato interno, "JPG" causa erro
     save_format = target_format
     if target_format == "JPG":
         save_format = "JPEG"
     
-    # Garante que imagens PNG com transparência (RGBA) possam ser salvas como JPG (RGB)
     if save_format == "JPEG" and img.mode == "RGBA":
         img = img.convert("RGB")
         
@@ -69,20 +68,17 @@ def convert_excel_to_pdf(file_bytes):
     pdf.add_page()
     pdf.set_font("Arial", size=8)
     
-    # Ajuste para evitar divisão por zero se o df estiver vazio
     num_cols = len(df.columns)
     if num_cols == 0:
-        return b"" # Retorna PDF vazio se não houver colunas
+        return b"" 
         
-    col_width = pdf.w / (num_cols + 1) # Um pouco mais de margem
+    col_width = pdf.w / (num_cols + 1)
     row_height = pdf.font_size * 1.5
 
-    # Cabeçalho
     for col in df.columns:
         pdf.cell(col_width, row_height, str(col), border=1, align='C')
     pdf.ln(row_height)
     
-    # Dados
     for index, row in df.iterrows():
         for item in row:
             pdf.cell(col_width, row_height, str(item), border=1, align='L')
@@ -160,48 +156,70 @@ def render_pdf_pages(file_bytes):
     images = []
     for i in range(len(doc)):
         page = doc.load_page(i)
-        pix = page.get_pixmap(matrix=fitz.Matrix(0.5, 0.5)) # Reduz qualidade para performance
+        pix = page.get_pixmap(matrix=fitz.Matrix(1, 1)) # Qualidade normal
         img_data = pix.tobytes("png")
         images.append(img_data)
     return images, len(doc)
 
+def get_page_image(file_bytes, page_number):
+    """Retorna uma imagem PIL de uma página específica do PDF."""
+    doc = fitz.open(stream=file_bytes, filetype="pdf")
+    page = doc.load_page(page_number)
+    pix = page.get_pixmap(matrix=fitz.Matrix(2, 2)) # Alta qualidade para edição
+    img_data = pix.tobytes("png")
+    return Image.open(io.BytesIO(img_data))
+
 def edit_pdf_structure(file_bytes, pages_to_delete, pages_to_rotate):
     """Edita a estrutura do PDF (deleta e rotaciona páginas)."""
     doc = fitz.open(stream=file_bytes, filetype="pdf")
-    output_doc = fitz.open() # Novo PDF vazio
+    output_doc = fitz.open()
     
-    # Copia as páginas que não foram deletadas
     for i in range(len(doc)):
         if (i + 1) not in pages_to_delete:
             output_doc.insert_pdf(doc, from_page=i, to_page=i)
-            
-            # Aplica rotação se necessário na última página adicionada
             if (i + 1) in pages_to_rotate:
-                # Pega a última página adicionada (índice -1)
                 page = output_doc[-1]
-                # Rotaciona 90 graus sentido horário
                 page.set_rotation(page.rotation + 90)
 
     output_buffer = io.BytesIO()
     output_doc.save(output_buffer)
     return output_buffer.getvalue()
 
-# --- Funções de Dados (Bloco 4 - NOVO) ---
+def save_annotated_pdf(original_pdf_bytes, page_number, annotated_img_data):
+    """Substitui uma página do PDF pela versão anotada (imagem)."""
+    doc = fitz.open(stream=original_pdf_bytes, filetype="pdf")
+    
+    # Converte os dados da imagem anotada para bytes
+    img_byte_arr = io.BytesIO()
+    annotated_img = Image.fromarray(annotated_img_data.astype('uint8'), 'RGBA')
+    annotated_img = annotated_img.convert("RGB") # PDF prefere RGB
+    annotated_img.save(img_byte_arr, format='JPEG', quality=95)
+    img_bytes = img_byte_arr.getvalue()
+
+    # Carrega a página original para pegar dimensões
+    page = doc.load_page(page_number)
+    rect = page.rect
+    
+    # Insere a nova imagem cobrindo toda a página
+    page.insert_image(rect, stream=img_bytes)
+    
+    output_buffer = io.BytesIO()
+    doc.save(output_buffer)
+    return output_buffer.getvalue()
+
+# --- Funções de Dados (Bloco 4) ---
 
 def convert_excel_to_json(file_bytes):
     """Converte o primeiro sheet de um Excel para JSON (orient=records)."""
     df = pd.read_excel(io.BytesIO(file_bytes), engine='openpyxl')
-    # force_ascii=False para suportar acentos
     json_string = df.to_json(orient='records', indent=4, force_ascii=False)
     return json_string.encode('utf-8')
 
 def convert_csv_to_json(file_bytes):
     """Converte um CSV para JSON (orient=records)."""
     try:
-        # Tenta UTF-8 primeiro
         df = pd.read_csv(io.BytesIO(file_bytes))
     except UnicodeDecodeError:
-        # Tenta latin-1 como fallback
         df = pd.read_csv(io.BytesIO(file_bytes), encoding='latin-1')
         
     json_string = df.to_json(orient='records', indent=4, force_ascii=False)
@@ -209,13 +227,9 @@ def convert_csv_to_json(file_bytes):
 
 def convert_json_to_csv(file_bytes):
     """Converte um JSON (lista de objetos) para CSV."""
-    # Decodifica os bytes para string
     json_string = file_bytes.decode('utf-8')
     json_data = json.loads(json_string)
-    
-    # json_normalize é ótimo para achatar JSONs aninhados
     df = pd.json_normalize(json_data)
-    
     output_buffer = io.StringIO()
     df.to_csv(output_buffer, index=False)
     return output_buffer.getvalue().encode('utf-8')
@@ -228,10 +242,8 @@ st.set_page_config(
     layout="centered"
 )
 
-# CSS (O mesmo de antes)
 st.markdown("""
 <style>
-    /* --- Início do Bloco da Logo --- */
 	.logo-text {
 		font-family: 'Courier New', monospace;
 		font-size: 28px;
@@ -252,9 +264,6 @@ st.markdown("""
 			color: #FF4B4B; text-shadow: 1px 1px 3px rgba(0, 0, 0, 0.7);
 		}
 	}
-	/* --- Fim do Bloco da Logo --- */
-
-    /* --- Estilos para o footer (Rodapé Fixo) --- */
     .footer {
         text-align: center; position: fixed; left: 0; bottom: 0;
         width: 100%; padding: 1rem; color: #888; background-color: transparent;
@@ -273,7 +282,6 @@ st.markdown("""
 </style>
 """, unsafe_allow_html=True)
 
-# --- Header (Logo no canto superior) ---
 st.markdown(
     """
     <div class="logo-text">
@@ -283,17 +291,15 @@ st.markdown(
     unsafe_allow_html=True
 )
 
-# --- Seletor de Ferramenta (RÓTULOS ATUALIZADOS) ---
 tool_selection = st.radio(
     "Escolha a ferramenta:",
-    ["Conversor", "Imagem (IA)", "PDF", "Dados"], # Rótulos curtos
+    ["Conversor", "Imagem (IA)", "PDF", "Dados"],
     horizontal=True,
     label_visibility="collapsed"
 )
 
 st.divider()
 
-# --- Bloco 1: Conversor Universal (Condicional atualizada) ---
 if tool_selection == "Conversor":
     with st.container(border=True):
         st.title("Conversor Universal de Arquivos")
@@ -313,8 +319,6 @@ if tool_selection == "Conversor":
         )
         
         selected_types = conversion_options[option][0]
-        
-        # Modo Lote (Não disponível para Excel para PDF)
         modo_lote = False
         if option != "Excel para PDF (.pdf)":
             modo_lote = st.toggle("Ativar processamento em lote")
@@ -327,13 +331,10 @@ if tool_selection == "Conversor":
         )
         
         if uploaded_files:
-            # Garante que 'uploaded_files' seja sempre uma lista
             if not modo_lote:
-                uploaded_files = [uploaded_files] # Transforma o arquivo único em lista
+                uploaded_files = [uploaded_files]
             
-            # --- Lógica de Processamento (Lote ou Único) ---
             if modo_lote:
-                # --- Modo Lote (ZIP) ---
                 with st.spinner(f"Processando {len(uploaded_files)} arquivos..."):
                     try:
                         zip_buffer = io.BytesIO()
@@ -373,10 +374,9 @@ if tool_selection == "Conversor":
                         st.error(f"Ocorreu um erro durante o processamento em lote: {e}")
 
             else:
-                # --- Modo Arquivo Único ---
                 with st.spinner("Convertendo..."):
                     try:
-                        uploaded_file = uploaded_files[0] # Pega o primeiro (e único) arquivo
+                        uploaded_file = uploaded_files[0]
                         file_bytes = uploaded_file.getvalue()
                         output_bytes = None
                         file_name = "conversao"
@@ -416,16 +416,14 @@ if tool_selection == "Conversor":
                     except Exception as e:
                         st.error(f"Ocorreu um erro durante a conversão: {e}")
 
-
-# --- Bloco 2: Ferramentas de Imagem (Condicional atualizada) ---
 elif tool_selection == "Imagem (IA)":
     with st.container(border=True):
-        st.title("Ferramentas de Imagem (com IA)") # Título completo mantido
+        st.title("Ferramentas de Imagem (com IA)")
         st.markdown("Remova fundos de imagens usando IA ou otimize o tamanho de arquivos.")
 
         image_options = {
             "Remover Fundo (IA)": "png",
-            "Otimizar Imagem": None # Mantém extensão original
+            "Otimizar Imagem": None
         }
         
         img_option = st.selectbox(
@@ -444,10 +442,9 @@ elif tool_selection == "Imagem (IA)":
         
         if uploaded_files_img:
             if not modo_lote_img:
-                uploaded_files_img = [uploaded_files_img] # Transforma em lista
+                uploaded_files_img = [uploaded_files_img]
             
             if modo_lote_img:
-                # --- Modo Lote (ZIP) ---
                 with st.spinner(f"Processando {len(uploaded_files_img)} imagens..."):
                     try:
                         zip_buffer_img = io.BytesIO()
@@ -481,7 +478,6 @@ elif tool_selection == "Imagem (IA)":
                     except Exception as e:
                         st.error(f"Ocorreu um erro durante o processamento em lote: {e}")
             else:
-                # --- Modo Arquivo Único (com Preview) ---
                 with st.spinner("Processando imagem..."):
                     try:
                         uploaded_image = uploaded_files_img[0]
@@ -524,16 +520,14 @@ elif tool_selection == "Imagem (IA)":
                     except Exception as e:
                         st.error(f"Ocorreu um erro ao processar a imagem: {e}")
 
-
-# --- Bloco 3: Ferramentas de PDF (Condicional atualizada) ---
 elif tool_selection == "PDF":
     with st.container(border=True):
-        st.title("Ferramentas de PDF") # Título completo mantido
+        st.title("Ferramentas de PDF")
         st.markdown("Combine, separe ou edite seus arquivos PDF.")
         
         pdf_option = st.selectbox(
             "Selecione a ferramenta de PDF:",
-            ["Juntar PDFs", "Dividir PDF (por página)", "Editor de PDF"]
+            ["Juntar PDFs", "Dividir PDF (por página)", "Editor de Estrutura", "Anotar e Desenhar"]
         )
         
         if pdf_option == "Juntar PDFs":
@@ -550,7 +544,6 @@ elif tool_selection == "PDF":
                     try:
                         files_bytes_list = [f.getvalue() for f in uploaded_pdfs]
                         merged_pdf_bytes = merge_pdfs(files_bytes_list)
-                        
                         st.success("PDFs juntados com sucesso!")
                         st.download_button(
                             label="Baixar PDF Juntado",
@@ -565,7 +558,7 @@ elif tool_selection == "PDF":
                 st.warning("Você precisa fazer upload de pelo menos 2 arquivos PDF para juntar.")
 
         elif pdf_option == "Dividir PDF (por página)":
-            st.markdown("Faça upload de um PDF para dividi-lo em páginas separadas (entregue como .zip).")
+            st.markdown("Faça upload de um PDF para dividi-lo em páginas separadas.")
             uploaded_pdf_split = st.file_uploader(
                 "Selecione o PDF para dividir",
                 type="pdf",
@@ -578,7 +571,6 @@ elif tool_selection == "PDF":
                     try:
                         pdf_bytes = uploaded_pdf_split.getvalue()
                         zip_bytes = split_pdf(pdf_bytes)
-                        
                         st.success("PDF dividido com sucesso!")
                         st.download_button(
                             label="Baixar Páginas (.zip)",
@@ -590,7 +582,7 @@ elif tool_selection == "PDF":
                     except Exception as e:
                         st.error(f"Ocorreu um erro ao dividir o PDF: {e}")
         
-        elif pdf_option == "Editor de PDF":
+        elif pdf_option == "Editor de Estrutura":
             st.markdown("Visualize, exclua e rotacione páginas do seu PDF.")
             uploaded_pdf_edit = st.file_uploader(
                 "Selecione o PDF para editar",
@@ -603,14 +595,10 @@ elif tool_selection == "PDF":
                 with st.spinner("Carregando páginas..."):
                     try:
                         file_bytes = uploaded_pdf_edit.getvalue()
-                        
-                        # Renderiza preview
                         page_images, num_pages = render_pdf_pages(file_bytes)
                         
                         st.markdown("---")
                         st.markdown("##### Preview das Páginas")
-                        
-                        # Exibe as páginas em grade
                         cols = st.columns(3)
                         for i, img_data in enumerate(page_images):
                             with cols[i % 3]:
@@ -618,28 +606,23 @@ elif tool_selection == "PDF":
 
                         st.markdown("---")
                         st.markdown("##### Configurações de Edição")
-                        
-                        # Controles de edição
                         col1, col2 = st.columns(2)
-                        
                         with col1:
                             pages_to_delete = st.multiselect(
                                 "Selecione as páginas para **EXCLUIR**:",
                                 options=range(1, num_pages + 1),
-                                placeholder="Nenhuma página selecionada"
+                                placeholder="Nenhuma"
                             )
-
                         with col2:
                             pages_to_rotate = st.multiselect(
                                 "Selecione páginas para **ROTACIONAR (90º)**:",
                                 options=range(1, num_pages + 1),
-                                placeholder="Nenhuma página selecionada"
+                                placeholder="Nenhuma"
                             )
 
                         if st.button("Aplicar Alterações e Baixar"):
                             with st.spinner("Aplicando alterações..."):
                                 edited_pdf_bytes = edit_pdf_structure(file_bytes, pages_to_delete, pages_to_rotate)
-                                
                                 st.success("PDF editado com sucesso!")
                                 st.download_button(
                                     label="Baixar PDF Editado",
@@ -648,14 +631,72 @@ elif tool_selection == "PDF":
                                     mime="application/pdf",
                                     use_container_width=True
                                 )
-
                     except Exception as e:
                         st.error(f"Ocorreu um erro ao carregar o PDF: {e}")
 
-# --- Bloco 4: Ferramentas de Dados (Condicional atualizada) ---
+        elif pdf_option == "Anotar e Desenhar":
+            st.markdown("Desenhe, adicione texto e faça anotações em uma página do PDF.")
+            uploaded_pdf_annotate = st.file_uploader(
+                "Selecione o PDF para anotar",
+                type="pdf",
+                accept_multiple_files=False,
+                label_visibility="collapsed",
+                key="annotate_uploader"
+            )
+
+            if uploaded_pdf_annotate:
+                try:
+                    file_bytes = uploaded_pdf_annotate.getvalue()
+                    doc = fitz.open(stream=file_bytes, filetype="pdf")
+                    num_pages = len(doc)
+
+                    # Seleção da página
+                    page_number = st.number_input("Selecione a página para anotar:", min_value=1, max_value=num_pages, value=1)
+                    
+                    # Carrega a página como imagem para o canvas
+                    pil_image = get_page_image(file_bytes, page_number - 1) # index é 0-based
+                    
+                    st.markdown("Use as ferramentas abaixo para desenhar na página:")
+                    
+                    # Canvas de desenho
+                    canvas_result = st_canvas(
+                        fill_color="rgba(255, 165, 0, 0.3)",  # Cor de preenchimento padrão
+                        stroke_width=3,
+                        stroke_color="#FF0000",
+                        background_image=pil_image,
+                        update_streamlit=True,
+                        height=pil_image.height,
+                        width=pil_image.width,
+                        drawing_mode="freedraw",
+                        key="canvas",
+                    )
+
+                    if st.button("Salvar Página e Baixar PDF"):
+                        if canvas_result.image_data is not None:
+                            with st.spinner("Gerando PDF anotado..."):
+                                # Pega a imagem gerada pelo canvas
+                                annotated_data = canvas_result.image_data
+                                
+                                # Salva no PDF
+                                final_pdf_bytes = save_annotated_pdf(file_bytes, page_number - 1, annotated_data)
+                                
+                                st.success("Anotação salva com sucesso!")
+                                st.download_button(
+                                    label="Baixar PDF Anotado",
+                                    data=final_pdf_bytes,
+                                    file_name="pdf_anotado.pdf",
+                                    mime="application/pdf",
+                                    use_container_width=True
+                                )
+                        else:
+                            st.warning("Faça alguma alteração no desenho antes de salvar.")
+
+                except Exception as e:
+                    st.error(f"Ocorreu um erro ao carregar o PDF: {e}")
+
 elif tool_selection == "Dados":
     with st.container(border=True):
-        st.title("Ferramentas de Dados") # Título completo mantido
+        st.title("Ferramentas de Dados")
         st.markdown("Converta formatos de dados estruturados (Excel, CSV, JSON).")
         
         data_options = {
@@ -674,7 +715,7 @@ elif tool_selection == "Dados":
         uploaded_data_file = st.file_uploader(
             f"Faça upload do seu arquivo ({selected_data_types})",
             type=selected_data_types,
-            accept_multiple_files=False, # Modo lote não implementado para dados
+            accept_multiple_files=False,
             label_visibility="collapsed"
         )
         
@@ -711,10 +752,8 @@ elif tool_selection == "Dados":
                         )
                 except Exception as e:
                     st.error(f"Ocorreu um erro ao converter os dados: {e}")
-                    st.exception(e) # Mostra o stack trace para depuração
+                    st.exception(e)
 
-
-# --- Rodapé Fixo (O mesmo de antes) ---
 github_icon_svg = """
 <svg role="img" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg">
 <title>GitHub</title>
