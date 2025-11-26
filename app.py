@@ -154,6 +154,38 @@ def split_pdf(file_bytes):
     zip_buffer.seek(0)
     return zip_buffer.getvalue()
 
+def render_pdf_pages(file_bytes):
+    """Renderiza as páginas do PDF como imagens para preview."""
+    doc = fitz.open(stream=file_bytes, filetype="pdf")
+    images = []
+    for i in range(len(doc)):
+        page = doc.load_page(i)
+        pix = page.get_pixmap(matrix=fitz.Matrix(0.5, 0.5)) # Reduz qualidade para performance
+        img_data = pix.tobytes("png")
+        images.append(img_data)
+    return images, len(doc)
+
+def edit_pdf_structure(file_bytes, pages_to_delete, pages_to_rotate):
+    """Edita a estrutura do PDF (deleta e rotaciona páginas)."""
+    doc = fitz.open(stream=file_bytes, filetype="pdf")
+    output_doc = fitz.open() # Novo PDF vazio
+    
+    # Copia as páginas que não foram deletadas
+    for i in range(len(doc)):
+        if (i + 1) not in pages_to_delete:
+            output_doc.insert_pdf(doc, from_page=i, to_page=i)
+            
+            # Aplica rotação se necessário na última página adicionada
+            if (i + 1) in pages_to_rotate:
+                # Pega a última página adicionada (índice -1)
+                page = output_doc[-1]
+                # Rotaciona 90 graus sentido horário
+                page.set_rotation(page.rotation + 90)
+
+    output_buffer = io.BytesIO()
+    output_doc.save(output_buffer)
+    return output_buffer.getvalue()
+
 # --- Funções de Dados (Bloco 4 - NOVO) ---
 
 def convert_excel_to_json(file_bytes):
@@ -497,11 +529,11 @@ elif tool_selection == "Imagem (IA)":
 elif tool_selection == "PDF":
     with st.container(border=True):
         st.title("Ferramentas de PDF") # Título completo mantido
-        st.markdown("Combine ou separe seus arquivos PDF.")
+        st.markdown("Combine, separe ou edite seus arquivos PDF.")
         
         pdf_option = st.selectbox(
             "Selecione a ferramenta de PDF:",
-            ["Juntar PDFs", "Dividir PDF (por página)"]
+            ["Juntar PDFs", "Dividir PDF (por página)", "Editor de PDF"]
         )
         
         if pdf_option == "Juntar PDFs":
@@ -557,6 +589,68 @@ elif tool_selection == "PDF":
                         )
                     except Exception as e:
                         st.error(f"Ocorreu um erro ao dividir o PDF: {e}")
+        
+        elif pdf_option == "Editor de PDF":
+            st.markdown("Visualize, exclua e rotacione páginas do seu PDF.")
+            uploaded_pdf_edit = st.file_uploader(
+                "Selecione o PDF para editar",
+                type="pdf",
+                accept_multiple_files=False,
+                label_visibility="collapsed"
+            )
+
+            if uploaded_pdf_edit:
+                with st.spinner("Carregando páginas..."):
+                    try:
+                        file_bytes = uploaded_pdf_edit.getvalue()
+                        
+                        # Renderiza preview
+                        page_images, num_pages = render_pdf_pages(file_bytes)
+                        
+                        st.markdown("---")
+                        st.markdown("##### Preview das Páginas")
+                        
+                        # Exibe as páginas em grade
+                        cols = st.columns(3)
+                        for i, img_data in enumerate(page_images):
+                            with cols[i % 3]:
+                                st.image(img_data, caption=f"Página {i+1}", use_container_width=True)
+
+                        st.markdown("---")
+                        st.markdown("##### Configurações de Edição")
+                        
+                        # Controles de edição
+                        col1, col2 = st.columns(2)
+                        
+                        with col1:
+                            pages_to_delete = st.multiselect(
+                                "Selecione as páginas para **EXCLUIR**:",
+                                options=range(1, num_pages + 1),
+                                placeholder="Nenhuma página selecionada"
+                            )
+
+                        with col2:
+                            pages_to_rotate = st.multiselect(
+                                "Selecione páginas para **ROTACIONAR (90º)**:",
+                                options=range(1, num_pages + 1),
+                                placeholder="Nenhuma página selecionada"
+                            )
+
+                        if st.button("Aplicar Alterações e Baixar"):
+                            with st.spinner("Aplicando alterações..."):
+                                edited_pdf_bytes = edit_pdf_structure(file_bytes, pages_to_delete, pages_to_rotate)
+                                
+                                st.success("PDF editado com sucesso!")
+                                st.download_button(
+                                    label="Baixar PDF Editado",
+                                    data=edited_pdf_bytes,
+                                    file_name="pdf_editado.pdf",
+                                    mime="application/pdf",
+                                    use_container_width=True
+                                )
+
+                    except Exception as e:
+                        st.error(f"Ocorreu um erro ao carregar o PDF: {e}")
 
 # --- Bloco 4: Ferramentas de Dados (Condicional atualizada) ---
 elif tool_selection == "Dados":
