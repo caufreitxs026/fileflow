@@ -176,9 +176,18 @@ def get_page_image(file_bytes, page_number):
     """Retorna uma imagem PIL de uma página específica do PDF."""
     doc = fitz.open(stream=file_bytes, filetype="pdf")
     page = doc.load_page(page_number)
-    pix = page.get_pixmap(matrix=fitz.Matrix(2, 2)) # Alta qualidade para edição
+    
+    # Define zoom explicitamente para evitar erros de tipo
+    zoom_x = 2.0
+    zoom_y = 2.0
+    mat = fitz.Matrix(zoom_x, zoom_y)
+    pix = page.get_pixmap(matrix=mat) # Alta qualidade para edição
+    
     img_data = pix.tobytes("png")
-    return Image.open(io.BytesIO(img_data))
+    image = Image.open(io.BytesIO(img_data))
+    
+    # Converte para RGB para garantir compatibilidade
+    return image.convert("RGB")
 
 def edit_pdf_structure(file_bytes, pages_to_delete, pages_to_rotate):
     """Edita a estrutura do PDF (deleta e rotaciona páginas)."""
@@ -676,8 +685,8 @@ elif tool_selection == "PDF":
                         stroke_color="#FF0000",
                         background_image=pil_image,
                         update_streamlit=True,
-                        height=pil_image.height,
-                        width=pil_image.width,
+                        height=int(pil_image.height),
+                        width=int(pil_image.width),
                         drawing_mode="freedraw",
                         key="canvas",
                     )
